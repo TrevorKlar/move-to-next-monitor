@@ -20,6 +20,7 @@
 screen_width=`xdpyinfo | awk '/dimensions:/ { print $2; exit }' | cut -d"x" -f1`
 screen_height=`xdpyinfo | awk '/dimensions:/ { print $2; exit }' | cut -d"x" -f2`
 display_width=`xdotool getdisplaygeometry | cut -d" " -f1`
+display_height=`xdotool getdisplaygeometry | cut -d" " -f2`
 window_id=`xdotool getactivewindow`
 
 # Remember if it was maximized.
@@ -28,18 +29,20 @@ window_state=`xprop -id $window_id _NET_WM_STATE | awk '{ print $3 }'`
 # Un-maximize current window so that we can move it
 wmctrl -ir $window_id -b remove,maximized_vert,maximized_horz
 
-# Read window position and size
+# Read window position
 x=`xwininfo -id $window_id | awk '/Absolute upper-left X:/ { print $4 }'`
 y=`xwininfo -id $window_id | awk '/Absolute upper-left Y:/ { print $4 }'`
 width=`xdotool getwindowgeometry $window_id | awk '/Geometry:/ { print $2 }'|cut -d"x" -f1`
 height=`xdotool getwindowgeometry $window_id | awk '/Geometry:/ { print $2 }'|cut -d"x" -f2`
 
-# Subtract any offsets caused by panels or window decorations
+# Correct for any offsets caused by panels or window decorations
 x_offset=`xwininfo -id $window_id | awk '/Relative upper-left X:/ { print $4 }'`
 y_offset=`xwininfo -id $window_id | awk '/Relative upper-left Y:/ { print $4 }'`
 x=$(( $x - $x_offset ))
 y=$(( $y - $y_offset ))
 new_y=$y #normally we'll keep the y-position the same
+width=$(( $width + 2 * x_offset ))
+height=$(( $height + y_offset ))
 
 # Read arguments
 #echo "DEBUG: start reading args"
@@ -72,9 +75,8 @@ esac
 done
 
 # Compute new X position
-# move right by default, we'll just overwrite this otherwise
-  new_x=$(( $x + $display_width ))
-# if chosen, move left
+  new_x=$(( $x + $display_width )) # move right by default
+# if -l is given, move left
 if [ "$MOVE" = left ]; then 
   new_x=$(( $x - $display_width ))
   if [ $new_x -gt $(( $display_width - $width / 2 )) ]; then new_x=$(( $display_width - $width )); fi
@@ -83,8 +85,8 @@ fi
 # Reset if -x is given
 if [ "$MOVE" = reset ]; then 
 	#new_x=0
-	new_x=$(( ( $screen_width - $width ) / 2 ))
-	new_y=$(( ( $screen_height - $height ) / 2 ))
+	new_x=$(( ( $display_width - $width ) / 2 ))
+	new_y=$(( ( $display_height - $height ) / 2 ))
 fi
 
 ### This is my code which was working, I've "improved it" but I haven't tested it yet. 
