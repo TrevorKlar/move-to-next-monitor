@@ -1,0 +1,140 @@
+#!/bin/bash
+#
+# Move the current window to the next monitor.
+#
+# Only works on a horizontal monitor setup.
+# Also works only on one X screen (which is the most common case).
+#
+# Modified a bunch by Trevor Klar in 2020.
+#
+# Props to
+# http://icyrock.com/blog/2012/05/xubuntu-moving-windows-between-monitors/
+# for writing the original version of this script.
+#
+# Unfortunately, both "xdotool getwindowgeometry --shell $window_id" and
+# checking "-geometry" of "xwininfo -id $window_id" are not sufficient, as
+# the first command does not respect panel/decoration offsets and the second
+# will sometimes give a "-0-0" geometry. This is why we resort to "xwininfo".
+
+# Get screen and display info
+screen_width=`xdpyinfo | awk '/dimensions:/ { print $2; exit }' | cut -d"x" -f1`
+screen_height=`xdpyinfo | awk '/dimensions:/ { print $2; exit }' | cut -d"x" -f2`
+display_width=`xdotool getdisplaygeometry | cut -d" " -f1`
+window_id=`xdotool getactivewindow`
+
+# Remember if it was maximized.
+window_state=`xprop -id $window_id _NET_WM_STATE | awk '{ print $3 }'`
+
+# Un-maximize current window so that we can move it
+wmctrl -ir $window_id -b remove,maximized_vert,maximized_horz
+
+# Read window position and size
+x=`xwininfo -id $window_id | awk '/Absolute upper-left X:/ { print $4 }'`
+y=`xwininfo -id $window_id | awk '/Absolute upper-left Y:/ { print $4 }'`
+width=`xdotool getwindowgeometry $window_id | awk '/Geometry:/ { print $2 }'|cut -d"x" -f1`
+height=`xdotool getwindowgeometry $window_id | awk '/Geometry:/ { print $2 }'|cut -d"x" -f2`
+
+# Subtract any offsets caused by panels or window decorations
+x_offset=`xwininfo -id $window_id | awk '/Relative upper-left X:/ { print $4 }'`
+y_offset=`xwininfo -id $window_id | awk '/Relative upper-left Y:/ { print $4 }'`
+x=$(( $x - $x_offset ))
+y=$(( $y - $y_offset ))
+new_y=$y #normally we'll keep the y-position the same
+
+# Read arguments
+#echo "DEBUG: start reading args"
+POSITIONAL=()
+while [[ $# -gt 0 ]]
+do
+key="$1"
+#
+case $key in
+	  -l|--left)
+	  MOVE=left
+    shift #past argument
+		;;
+    -r|--right)
+    MOVE=right
+    shift #past argument
+    ;;
+    -x|--reset)
+    MOVE=reset
+    shift #past argument
+    ;;
+    -h|--help)
+    #not implemented yet
+    shift #past argument
+    ;;
+    *)
+    shift #past argument
+    ;;
+esac
+done
+
+# Compute new X position
+# move right by default, we'll just overwrite this otherwise
+  new_x=$(( $x + $display_width ))
+# if chosen, move left
+if [ "$MOVE" = left ]; then 
+  new_x=$(( $x - $display_width ))
+  if [ $new_x -gt $(( $display_width - $width / 2 )) ]; then new_x=$(( $display_width - $width )); fi
+  # The above line is supposed to fix a bug where sometimes the window can't move left off a larger screen.
+fi
+# Reset if -x is given
+if [ "$MOVE" = reset ]; then 
+	#new_x=0
+	new_x=$(( ( $screen_width - $width ) / 2 ))
+	new_y=$(( ( $screen_height - $height ) / 2 ))
+fi
+
+### This is my code which was working, I've "improved it" but I haven't tested it yet. 
+## Compute new X position
+#if [ $x -lt $display_width ]; then
+## if left, move right
+#  new_x=`expr $x + $display_width`
+## if right, move left
+#else 
+#  new_x=`expr $x - $display_width`
+#  if [ $new_x -gt `expr $display_width - $width / 2` ]; then new_x=`expr $display_width - $width`; fi
+#fi
+## Reset if -x is given
+#if [ "$MOVE" = 0 ]; then 
+#	new_x=0
+#fi
+
+
+## Compute new X position
+#new_x=`expr $x + $display_width`
+#
+## If we would move off the right-most monitor, we set it to the left one.
+## We also respect the window's width here: moving a window off more than half its width won't happen.
+#width=`xdotool getwindowgeometry $window_id | awk '/Geometry:/ { print $2 }'|cut -d"x" -f1`
+#if [ `expr $new_x + $width / 2` -gt $screen_width ]; then
+#  new_x=`expr $new_x - $screen_width`
+#fi
+#
+## Don't move off the left side.
+#if [ $new_x -lt 0 ]; then
+#  new_x=0
+#fi
+
+## Compute new mouse position
+new_mouse_x=$(( $new_x + ($width / 2) ))
+new_mouse_y=$(( $new_y + ($height / 2) ))
+if [ $new_mouse_x -lt 0 ]; then
+  new_mouse_x=$(( $width / 2 ))
+fi
+if [ $new_mouse_x -gt $screen_width ]; then
+  new_mouse_x=$(( $screen_width - $width / 2 ))
+fi
+echo "$new_mouse_x $new_mouse_y"
+
+# Move the window
+xdotool windowmove $window_id $new_x $new_y
+#xdotool mousemove -w $window_id restore
+xdotool mousemove $new_mouse_x $new_mouse_y
+
+# Maximize window again, if it was before
+if [ "${window_state}" = "_NET_WM_STATE_MAXIMIZED_HORZ," ]; then
+  wmctrl -ir $window_id -b add,maximized_vert,maximized_horz
+fi
