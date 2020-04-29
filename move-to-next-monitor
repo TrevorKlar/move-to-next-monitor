@@ -17,8 +17,13 @@
 # will sometimes give a "-0-0" geometry. This is why we resort to "xwininfo".
 
 # Get screen and display info
+screen_data=`xrandr | grep ' connected' | sed 's/primary//'`
+count_screens=`echo "$screen_data" | wc -l` #haven't implemented this. for now, assuming 2 screens.
+
+# This is the logical size of the desktop
 screen_width=`xdpyinfo | awk '/dimensions:/ { print $2; exit }' | cut -d"x" -f1`
 screen_height=`xdpyinfo | awk '/dimensions:/ { print $2; exit }' | cut -d"x" -f2`
+# This is the physical size of the first monitor
 display_width=`xdotool getdisplaygeometry | cut -d" " -f1`
 display_height=`xdotool getdisplaygeometry | cut -d" " -f2`
 window_id=`xdotool getactivewindow`
@@ -62,6 +67,7 @@ case $key in
     ;;
     -x|--reset)
     MOVE=reset
+    window_state=""
     shift #past argument
     ;;
     -h|--help)
@@ -74,12 +80,14 @@ case $key in
 esac
 done
 
-# Compute new X position
+## Compute new X position
+# move right by default
   new_x=$(( $x + $display_width )) # move right by default
+  if [ $new_x -gt $(( $screen_width - $width / 2 )) ]; then new_x=$(( $screen_width - $width )); fi
 # if -l is given, move left
 if [ "$MOVE" = left ]; then 
   new_x=$(( $x - $display_width ))
-  if [ $new_x -gt $(( $display_width - $width / 2 )) ]; then new_x=$(( $display_width - $width )); fi
+  if [ $new_x -lt $(( $width / 2 )) ]; then new_x=$(( 0 )); fi
   # The above line is supposed to fix a bug where sometimes the window can't move left off a larger screen.
 fi
 # Reset if -x is given
@@ -123,9 +131,11 @@ fi
 ## Compute new mouse position
 new_mouse_x=$(( $new_x + ($width / 2) ))
 new_mouse_y=$(( $new_y + ($height / 2) ))
+# keep mouse from moving offscreen left
 if [ $new_mouse_x -lt 0 ]; then
   new_mouse_x=$(( $width / 2 ))
 fi
+# kee mouse from moving offscreen right
 if [ $new_mouse_x -gt $screen_width ]; then
   new_mouse_x=$(( $screen_width - $width / 2 ))
 fi
